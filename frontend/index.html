@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SatQuery AI — Interactive Vision-Language Assistant for Remote Sensing (ISRO / SIH26167)</title>
+  
+  <!-- Meta SEO -->
+  <meta name="description" content="SatQuery AI is an interactive vision-language assistant for multimodal remote sensing and satellite image analysis through natural language queries. Built for ISRO / Smart India Hackathon (SIH26167).">
+  <meta name="keywords" content="SatQuery AI, ISRO, SIH, Remote Sensing, Satellite Vision, VLM, AI Assistant, Earth Observation">
+
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS for Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Leaflet.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+  <!-- Top App Navigation / Status Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-logo">
+        <div class="logo-icon-pulse">
+          <i data-lucide="satellite" class="logo-icon"></i>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title-row">
+            <span class="brand-title">SatQuery <span class="ai-badge">AI</span></span>
+            <span class="sih-tag">ISRO • SIH26167</span>
+          </div>
+          <span class="brand-tagline">Ask Questions. Understand Earth from Space.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="engine-badge" id="engineStatusBadge" title="System Engine Mode">
+        <span class="pulse-dot"></span>
+        <span class="engine-text">Local CV Reasoning Engine (Offline)</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button class="btn btn-secondary btn-sm" id="btnHelpModal" title="About Problem Statement & Architecture">
+        <i data-lucide="info"></i>
+        <span>SIH Overview</span>
+      </button>
+      <button class="btn btn-primary btn-sm" id="btnDownloadReport" disabled title="Download Official Analysis Report">
+        <i data-lucide="file-down"></i>
+        <span>Download Report</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container with 3-Column Layout -->
+  <div class="app-layout">
+    
+    <!-- LEFT SIDEBAR: Navigation, Uploads, Presets, History -->
+    <aside class="sidebar-left" id="sidebarLeft">
+      <div class="sidebar-top-actions">
+        <button class="btn btn-gradient btn-block" id="btnNewSession">
+          <i data-lucide="plus-circle"></i>
+          <span>New Analysis</span>
+        </button>
+
+        <div class="upload-dropzone" id="uploadDropzone">
+          <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.tif,.tiff" class="file-input-hidden" />
+          <div class="dropzone-content">
+            <i data-lucide="upload-cloud" class="dropzone-icon"></i>
+            <span class="dropzone-title">Upload Satellite Image</span>
+            <span class="dropzone-hint">JPG, PNG, TIFF (Single or Multi)</span>
+          </div>
+        </div>
+
+        <button class="btn btn-glass btn-block" id="btnToggleCompareMode">
+          <i data-lucide="split"></i>
+          <span id="compareBtnText">Dual-Image Compare</span>
+        </button>
+      </div>
+
+      <!-- Demo Presets -->
+      <div class="sidebar-section">
+        <div class="section-title-row">
+          <span class="section-title"><i data-lucide="sparkles"></i> Preset Datasets</span>
+          <span class="badge-mini">Demo</span>
+        </div>
+        <div class="presets-list" id="presetsList">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Analysis History -->
+      <div class="sidebar-section flex-grow">
+        <div class="section-title-row">
+          <span class="section-title"><i data-lucide="history"></i> Analysis History</span>
+          <button class="btn-icon-xs" id="btnRefreshHistory" title="Refresh"><i data-lucide="rotate-cw"></i></button>
+        </div>
+        <div class="history-list" id="historyList">
+          <div class="empty-state-mini">No past sessions recorded</div>
+        </div>
+      </div>
+
+      <!-- System Telemetry Footer -->
+      <div class="sidebar-footer">
+        <div class="telemetry-row">
+          <span>Target Satellite:</span>
+          <strong id="activeTargetLabel">Optical RGB / GeoTIFF</strong>
+        </div>
+        <div class="telemetry-row">
+          <span>Classification:</span>
+          <strong id="activeResolutionLabel">Multi-Spectral Estimate</strong>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER / MAIN CONTENT: Raster Visualizer & Interactive Chat Stream -->
+    <main class="main-content">
+      
+      <!-- IMAGE VIEWER & MULTI-LAYER CONTROLS -->
+      <div class="viewer-container" id="viewerContainer">
+        
+        <!-- Viewer Top Bar: Layer Switcher & Opacity Slider -->
+        <div class="viewer-header">
+          <div class="layer-tabs" id="layerTabs">
+            <button class="layer-tab active" data-layer="original">
+              <i data-lucide="image"></i> Original
+            </button>
+            <button class="layer-tab" data-layer="vegetation">
+              <i data-lucide="trees"></i> Vegetation (VARI)
+            </button>
+            <button class="layer-tab" data-layer="water">
+              <i data-lucide="waves"></i> Water Bodies (NDWI)
+            </button>
+            <button class="layer-tab" data-layer="builtup">
+              <i data-lucide="building-2"></i> Built-Up (Urban)
+            </button>
+            <button class="layer-tab" data-layer="segmentation">
+              <i data-lucide="layers"></i> Land-Cover Map
+            </button>
+            <button class="layer-tab" data-layer="roads">
+              <i data-lucide="milestone"></i> Roads & Corridors
+            </button>
+            <button class="layer-tab compare-only hidden" data-layer="change">
+              <i data-lucide="git-compare"></i> Change Map
+            </button>
+          </div>
+
+          <div class="viewer-tools">
+            <div class="opacity-control" id="opacityControl" title="Overlay Opacity">
+              <i data-lucide="blend"></i>
+              <input type="range" id="layerOpacitySlider" min="0" max="100" value="75" />
+              <span id="opacityVal">75%</span>
+            </div>
+            <button class="btn-icon-sm" id="btnFitScreen" title="Reset Fit"><i data-lucide="maximize-2"></i></button>
+          </div>
+        </div>
+
+        <!-- Raster Stage Viewport -->
+        <div class="raster-stage" id="rasterStage">
+          <!-- Initial Placeholder -->
+          <div class="viewer-placeholder" id="viewerPlaceholder">
+            <div class="placeholder-icon-wrap">
+              <i data-lucide="globe-2"></i>
+            </div>
+            <h3>No Satellite Image Loaded</h3>
+            <p>Upload a satellite image (.jpg, .png, .tif) or select a pre-calibrated sample from the left panel to begin interactive analysis.</p>
+            <div class="placeholder-actions">
+              <button class="btn btn-primary" onclick="document.getElementById('imageFileInput').click()">
+                <i data-lucide="upload"></i> Upload Image
+              </button>
+              <button class="btn btn-secondary" id="btnQuickSampleDemo">
+                <i data-lucide="zap"></i> Load Agricultural Demo
+              </button>
+            </div>
+          </div>
+
+          <!-- Single Image Canvas Container -->
+          <div class="image-layers-wrapper hidden" id="imageLayersWrapper">
+            <img id="baseImageElement" src="" alt="Satellite Base Image" class="base-raster" />
+            <img id="overlayImageElement" src="" alt="Analysis Overlay" class="overlay-raster" />
+            
+            <!-- Loading Indicator for Processing -->
+            <div class="viewer-loader hidden" id="viewerLoader">
+              <div class="radar-spinner"></div>
+              <span id="loaderStatusText">Extracting multi-spectral indices...</span>
+            </div>
+          </div>
+
+          <!-- Compare Dual Image Split View -->
+          <div class="compare-view-container hidden" id="compareViewContainer">
+            <div class="compare-slot slot-left">
+              <div class="slot-label">Pass T1 (Pre-Event)</div>
+              <img id="compareImgT1" src="" alt="Time 1" />
+            </div>
+            <div class="compare-divider"></div>
+            <div class="compare-slot slot-right">
+              <div class="slot-label">Pass T2 (Post-Event)</div>
+              <img id="compareImgT2" src="" alt="Time 2" />
+              <img id="compareOverlayImg" src="" alt="Change Detection Mask" class="overlay-raster" />
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- CHAT & NATURAL LANGUAGE ASSISTANT -->
+      <div class="chat-container">
+        
+        <!-- Quick Query Suggestion Pills -->
+        <div class="quick-queries" id="quickQueries">
+          <span class="quick-label"><i data-lucide="help-circle"></i> Suggested Queries:</span>
+          <button class="query-pill" data-query="What is visible in this image?">"What is visible here?"</button>
+          <button class="query-pill" data-query="Estimate the percentage of vegetation.">"Vegetation percentage?"</button>
+          <button class="query-pill" data-query="Where are the water bodies?">"Where are the water bodies?"</button>
+          <button class="query-pill" data-query="Identify urban or built-up areas.">"Identify built-up areas"</button>
+          <button class="query-pill" data-query="Identify the major land-cover types.">"Land-cover summary"</button>
+          <button class="query-pill" data-query="Are there roads visible?">"Are roads visible?"</button>
+        </div>
+
+        <!-- Chat Conversation Stream -->
+        <div class="chat-stream" id="chatStream">
+          
+          <!-- System Welcome Message -->
+          <div class="message-bubble system-message">
+            <div class="msg-avatar"><i data-lucide="satellite"></i></div>
+            <div class="msg-body">
+              <div class="msg-header">
+                <strong>SatQuery AI Assistant</strong>
+                <span class="msg-time">Ready</span>
+              </div>
+              <div class="msg-text">
+                Welcome to <strong>SatQuery AI</strong>, the interactive vision-language assistant for remote sensing.
+                Upload an optical satellite pass, high-resolution aerial photograph, or GeoTIFF to begin. 
+                You can ask questions in natural language about <em>vegetation density, water bodies, urban sprawl, land cover classification, or temporal changes</em>.
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Query Input Bar -->
+        <div class="chat-input-row">
+          <div class="chat-input-wrapper">
+            <textarea 
+              id="queryInput" 
+              rows="1" 
+              placeholder="Ask anything about your satellite image... (e.g. 'How much vegetation is present?')"
+            ></textarea>
+            <div class="input-actions">
+              <button class="btn-clear-chat" id="btnClearChat" title="Clear Conversation"><i data-lucide="trash-2"></i></button>
+              <button class="btn-send" id="btnSendQuery" title="Submit Query">
+                <i data-lucide="send"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- RIGHT PANEL: Metadata, Geolocation Map, Analytics Dashboard -->
+    <aside class="sidebar-right" id="sidebarRight">
+      
+      <!-- Section 1: Image Specifications & Metadata -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <i data-lucide="file-text"></i>
+          <span>Raster Metadata</span>
+        </div>
+        <div class="metadata-grid" id="metadataGrid">
+          <div class="meta-item">
+            <span class="meta-label">Dimensions</span>
+            <strong class="meta-val" id="metaDimensions">-- × --</strong>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">File Size</span>
+            <strong class="meta-val" id="metaFileSize">-- KB</strong>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Raster Format</span>
+            <strong class="meta-val" id="metaFormat">--</strong>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Channels / Mode</span>
+            <strong class="meta-val" id="metaChannels">3-Band (RGB)</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Leaflet Geolocation Map -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <i data-lucide="map-pin"></i>
+          <span>Geographic Location</span>
+          <span class="badge-mini" id="geoStatusBadge">Unknown</span>
+        </div>
+        <div class="map-container-box">
+          <div id="leafletMap"></div>
+          <div class="map-overlay-status hidden" id="mapOverlayStatus">
+            <i data-lucide="map-pin-off"></i>
+            <span>Geolocation unavailable for this optical raster</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 3: Land-Cover Distribution Chart & Metrics -->
+      <div class="panel-section flex-grow">
+        <div class="panel-header">
+          <i data-lucide="pie-chart"></i>
+          <span>Land-Cover Distribution</span>
+          <span class="badge-confidence" id="confidenceBadge">Est. 88%</span>
+        </div>
+
+        <!-- Chart.js Container -->
+        <div class="chart-wrapper">
+          <canvas id="landCoverChart"></canvas>
+        </div>
+
+        <!-- Quantitative Metric Cards -->
+        <div class="metrics-list" id="metricsList">
+          <div class="metric-card veg-card">
+            <div class="metric-info">
+              <span class="metric-name">🌿 Vegetation</span>
+              <span class="metric-pct" id="pctVegetation">--%</span>
+            </div>
+            <div class="metric-bar-bg"><div class="metric-bar-fill veg-fill" id="barVegetation" style="width: 0%"></div></div>
+          </div>
+
+          <div class="metric-card water-card">
+            <div class="metric-info">
+              <span class="metric-name">💧 Water Bodies</span>
+              <span class="metric-pct" id="pctWater">--%</span>
+            </div>
+            <div class="metric-bar-bg"><div class="metric-bar-fill water-fill" id="barWater" style="width: 0%"></div></div>
+          </div>
+
+          <div class="metric-card bu-card">
+            <div class="metric-info">
+              <span class="metric-name">🏙️ Built-Up / Urban</span>
+              <span class="metric-pct" id="pctBuiltup">--%</span>
+            </div>
+            <div class="metric-bar-bg"><div class="metric-bar-fill bu-fill" id="barBuiltup" style="width: 0%"></div></div>
+          </div>
+
+          <div class="metric-card barren-card">
+            <div class="metric-info">
+              <span class="metric-name">🏜️ Barren / Soil</span>
+              <span class="metric-pct" id="pctBarren">--%</span>
+            </div>
+            <div class="metric-bar-bg"><div class="metric-bar-fill barren-fill" id="barBarren" style="width: 0%"></div></div>
+          </div>
+        </div>
+
+        <!-- Detected Clusters Pill List -->
+        <div class="detected-clusters-box">
+          <span class="subhead">Spatial Features Detected:</span>
+          <div class="clusters-tags" id="clustersTags">
+            <span class="tag-pill">Pending analysis</span>
+          </div>
+        </div>
+
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- Comparison Modal for picking 2nd image -->
+  <div class="modal-backdrop hidden" id="compareModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i data-lucide="split"></i> Select Dual Images for Temporal Change Detection</h3>
+        <button class="btn-icon-sm" id="btnCloseCompareModal"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-lead">Choose Image Pass 1 (T1) and Image Pass 2 (T2) to calculate surface changes, structural variations, and quadrant shifts.</p>
+        
+        <div class="compare-selectors">
+          <div class="selector-box">
+            <label>Image T1 (Baseline):</label>
+            <select id="selectCompareT1" class="form-select"></select>
+          </div>
+          <div class="selector-box">
+            <label>Image T2 (Comparison):</label>
+            <select id="selectCompareT2" class="form-select"></select>
+          </div>
+        </div>
+
+        <div class="quick-preset-pair">
+          <span>Or load temporal benchmark pair:</span>
+          <button class="btn btn-secondary btn-sm" id="btnLoadTemporalBenchmark">
+            <i data-lucide="git-branch"></i> Load Pre & Post Development Dataset
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelCompare">Cancel</button>
+        <button class="btn btn-primary" id="btnExecuteCompare"><i data-lucide="zap"></i> Run Change Detection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIH Information Modal -->
+  <div class="modal-backdrop hidden" id="infoModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3><i data-lucide="satellite"></i> ISRO / SIH26167 — SatQuery AI Project Overview</h3>
+        <button class="btn-icon-sm" id="btnCloseInfoModal"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="info-section">
+          <h4>Problem Statement</h4>
+          <p><strong>SatQuery AI:</strong> An Interactive Vision-Language Assistant for Multimodal Remote Sensing Image Analysis through Text Queries (SIH26167, Space Technology Theme).</p>
+        </div>
+        <div class="info-section">
+          <h4>The Core Challenge</h4>
+          <p>Conventional satellite image interpretation requires complex GIS software (e.g. QGIS, ArcGIS, ERDAS Imagine) and specialized remote sensing training. Decision makers in agriculture, disaster response, and urban development cannot easily converse with spatial imagery.</p>
+        </div>
+        <div class="info-section">
+          <h4>SatQuery AI Solution</h4>
+          <p>An end-to-end interactive vision-language system that bridges high-resolution optical imagery, computer-vision spectral indices (VARI, NDWI, Laplacian texture variance), and natural-language reasoning. Users upload any satellite raster and ask conversational questions to receive quantitative metrics, spatial masks, and formal reports.</p>
+        </div>
+        <div class="info-grid-2">
+          <div class="info-box">
+            <strong>Key Features:</strong>
+            <ul>
+              <li>Optical multi-spectral estimation (VARI, GLI, NDWI-RGB)</li>
+              <li>Dual-image temporal change detection (CIE-Lab & Sobel diff)</li>
+              <li>Interactive multi-layer mask overlays with alpha blending</li>
+              <li>Leaflet geospatial location & GeoTIFF support</li>
+              <li>Self-contained offline CV reasoning engine</li>
+              <li>Instant downloadable PDF analysis briefs</li>
+            </ul>
+          </div>
+          <div class="info-box">
+            <strong>ISRO Standard Disclaimer:</strong>
+            <p>Algorithmic estimates on 3-band RGB imagery are mathematical approximations. For mission-critical cadastral surveys, calibrated multispectral L2A bands (Sentinel-2, Landsat-9, or Cartosat/Resourcesat) should be integrated.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Script -->
+  <script src="/static/script.js"></script>
+</body>
+</html>
